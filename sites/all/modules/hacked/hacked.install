@@ -1,0 +1,103 @@
+<?php
+
+// $Id: hacked.install,v 1.3 2009/12/24 17:44:48 darthsteven Exp $
+
+/**
+ * Implementation of hook_requirements().
+ */
+function hacked_requirements($phase) {
+  $requirements = array();
+
+  $t = get_t();
+
+  if ($phase == 'runtime') {
+    $version = hacked_cvs_executable_get_version();
+
+    $requirements['hacked_cvs'] = array(
+      'title' => $t('Hacked'),
+      'severity' => ($version) ? REQUIREMENT_OK : REQUIREMENT_WARNING,
+      'value' => ($version) ? $t('CVS executable found: %cvs_version', array('%cvs_version' => $version)) : $t("Could not find the 'cvs' executable. Checking CVS projects will not work correctly."),
+    );
+  }
+
+  return $requirements;
+}
+
+function hacked_install() {
+  drupal_install_schema('hacked');
+  hacked_install_add_exported_cache();
+}
+
+function hacked_uninstall() {
+  drupal_uninstall_schema('hacked');
+}
+
+function hacked_install_add_exported_cache() {
+  // Find files in the cache:
+  $files = file_scan_directory(drupal_get_path('module', 'hacked') . '/cache_export', '.inc$');
+  foreach($files as $file) {
+
+    $fileparts = explode('/', $file->filename);
+    if (count($fileparts) > 3) {
+      $version = array_pop($fileparts);
+      $version = substr($version, 0, strlen($version) - 4);
+      $name = array_pop($fileparts);
+      $type = array_pop($fileparts);
+
+      if (($type == 'core') || ($type == 'theme') || ($type == 'module')) {
+        unset($hashes);
+        include $file->filename;
+        if (isset($hashes)) {
+          cache_set($key = "hacked:clean:hashes:$type:$name:$version", $hashes, defined('HACKED_CACHE_TABLE') ? HACKED_CACHE_TABLE : 'cache_hacked');
+        }
+
+      }
+    }
+  }
+
+}
+
+function hacked_schema() {
+  $tables = array();
+
+  $tables['cache_hacked'] = array(
+    'description' => 'Cache table for the Hacked! module. Holds hashes for the various projects.',
+    'fields' => array(
+      'cid' => array(
+        'description' => 'Primary Key: Unique cache ID.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => ''),
+      'data' => array(
+        'description' => 'A collection of data to cache.',
+        'type' => 'blob',
+        'not null' => FALSE,
+        'size' => 'big'),
+      'expire' => array(
+        'description' => 'A Unix timestamp indicating when the cache entry should expire, or 0 for never.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0),
+      'created' => array(
+        'description' => 'A Unix timestamp indicating when the cache entry was created.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0),
+      'headers' => array(
+        'description' => 'Any custom HTTP headers to be added to cached data.',
+        'type' => 'text',
+        'not null' => FALSE),
+      'serialized' => array(
+        'description' => 'A flag to indicate whether content is serialized (1) or not (0).',
+        'type' => 'int',
+        'size' => 'small',
+        'not null' => TRUE,
+        'default' => 0)
+      ),
+    'indexes' => array('expire' => array('expire')),
+    'primary key' => array('cid'),
+    );
+
+  return $tables;
+}
